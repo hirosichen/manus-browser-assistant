@@ -3,10 +3,32 @@
 
 // Store the current active tab for operations
 let currentTargetTabId = null;
+// Store the web app tab to switch back after operations
+let webAppTabId = null;
 
 // Get the active tab that's not the localhost web app
 async function getTargetTab() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+
+  // Store the web app tab for switching back later
+  for (const tab of tabs) {
+    if (tab.url && tab.url.startsWith('http://localhost:3000')) {
+      webAppTabId = tab.id;
+    }
+  }
+
+  // If we have a stored target tab, try to use it
+  if (currentTargetTabId) {
+    try {
+      const tab = await chrome.tabs.get(currentTargetTabId);
+      if (tab && !tab.url.startsWith('http://localhost:3000') && !tab.url.startsWith('chrome://')) {
+        return tab;
+      }
+    } catch (e) {
+      // Tab no longer exists, will find a new one
+      currentTargetTabId = null;
+    }
+  }
 
   // Find a tab that's not localhost:3000 (our web app)
   for (const tab of tabs) {
@@ -61,14 +83,22 @@ async function handleNavigate({ url }) {
       targetUrl = 'https://' + url;
     }
 
+    // Store current web app tab before any operations
+    const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    for (const tab of activeTabs) {
+      if (tab.url && tab.url.startsWith('http://localhost:3000')) {
+        webAppTabId = tab.id;
+      }
+    }
+
     let tab = await getTargetTab();
 
     if (tab) {
-      // Update existing tab
-      tab = await chrome.tabs.update(tab.id, { url: targetUrl });
+      // Update existing tab (in background)
+      tab = await chrome.tabs.update(tab.id, { url: targetUrl, active: false });
     } else {
-      // Create new tab
-      tab = await chrome.tabs.create({ url: targetUrl });
+      // Create new tab in background
+      tab = await chrome.tabs.create({ url: targetUrl, active: false });
     }
 
     currentTargetTabId = tab.id;
@@ -332,16 +362,33 @@ async function captureScreenshot(tabId) {
     await chrome.tabs.update(tabId, { active: true });
 
     // Small delay to ensure tab is visible
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise(resolve => setTimeout(resolve, 150));
 
     const dataUrl = await chrome.tabs.captureVisibleTab(null, {
       format: 'png',
       quality: 90,
     });
 
+    // Switch back to web app tab if we have it
+    if (webAppTabId) {
+      try {
+        await chrome.tabs.update(webAppTabId, { active: true });
+      } catch (e) {
+        // Web app tab might have been closed, ignore
+      }
+    }
+
     return dataUrl;
   } catch (error) {
     console.error('[Background] Screenshot error:', error);
+    // Try to switch back to web app even on error
+    if (webAppTabId) {
+      try {
+        await chrome.tabs.update(webAppTabId, { active: true });
+      } catch (e) {
+        // Ignore
+      }
+    }
     return null;
   }
 }
