@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=380">
+  <title>Manus Browser Assistant</title>
+  <link rel="stylesheet" href="popup.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="container">
+    <!-- Ambient glow effects -->
+    <div class="ambient-glow glow-1"></div>
+    <div class="ambient-glow glow-2"></div>
+
+    <!-- Header -->
+    <header class="header">
+      <div class="logo-section">
+        <div class="logo">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+            <rect x="2" y="2" width="24" height="24" rx="6" stroke="url(#logoGrad)" stroke-width="2"/>
+            <path d="M8 14L12 18L20 10" stroke="url(#logoGrad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <defs>
+              <linearGradient id="logoGrad" x1="0" y1="0" x2="28" y2="28">
+                <stop stop-color="#818cf8"/>
+                <stop offset="1" stop-color="#c084fc"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div class="title-group">
+          <h1 class="title">Manus</h1>
+          <span class="version">Browser Assistant</span>
+        </div>
+      </div>
+      <div class="status-badge" id="statusBadge">
+        <span class="status-dot"></span>
+        <span class="status-text">Ready</span>
+      </div>
+    </header>
+
+    <!-- Quick Actions -->
+    <div class="actions">
+      <button class="btn btn-primary" id="openAppBtn">
+        <span class="btn-icon">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <rect x="2" y="2" width="14" height="14" rx="2" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M6 9H12M9 6V12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <span class="btn-text">Open Web App</span>
+      </button>
+      <button class="btn btn-secondary" id="screenshotBtn">
+        <span class="btn-icon">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <rect x="2" y="4" width="14" height="11" rx="2" stroke="currentColor" stroke-width="1.5"/>
+            <circle cx="9" cy="9.5" r="2.5" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M5 4V3C5 2.44772 5.44772 2 6 2H12C12.5523 2 13 2.44772 13 3V4" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+        </span>
+        <span class="btn-text">Screenshot</span>
+      </button>
+    </div>
+
+    <!-- Instructions -->
+    <div class="instructions-card">
+      <h3>How to Use</h3>
+      <ol>
+        <li>Click <strong>Open Web App</strong> to launch the AI chat interface</li>
+        <li>Navigate to any website in another tab</li>
+        <li>Chat with the AI to browse, search, and extract information</li>
+      </ol>
+      <p class="tip">The AI can take screenshots, click elements, type text, and more!</p>
+    </div>
+
+    <!-- Legacy Product Scraper Section -->
+    <div class="legacy-section" id="legacySection">
+      <div class="section-divider">
+        <span>Product Scraper (Dick's Sporting Goods)</span>
+      </div>
+
+      <!-- Connection Status -->
+      <div class="connection-bar" id="connectionBar">
+        <div class="connection-icon">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M7 4V7L9 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <span class="connection-text" id="connectionText">Detecting page...</span>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="actions">
+        <button class="btn btn-outline" id="extractBtn">
+          <span class="btn-icon">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M3 9H15M15 9L10 4M15 9L10 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          <span class="btn-text">Extract Product</span>
+          <span class="btn-loader"></span>
+        </button>
+        <button class="btn btn-outline" id="analyzeBtn" disabled>
+          <span class="btn-icon">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M9 2L11.5 7H16L12.5 10.5L14 16L9 12.5L4 16L5.5 10.5L2 7H6.5L9 2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          <span class="btn-text">AI Analysis</span>
+          <span class="btn-loader"></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Results Container -->
+    <div class="results-container hidden" id="resultsContainer">
+      <!-- Product Card -->
+      <div class="product-card" id="productCard">
+        <div class="card-header">
+          <h2 class="card-title" id="productTitle">—</h2>
+          <div class="price-group">
+            <span class="price-current" id="currentPrice">—</span>
+            <span class="price-original" id="originalPrice"></span>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <!-- Colors Section -->
+          <div class="info-section" id="colorsSection">
+            <button class="section-toggle" data-target="colorsList">
+              <span class="section-label">Colors</span>
+              <span class="section-count" id="colorsCount">0</span>
+              <svg class="chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </button>
+            <div class="section-content" id="colorsList"></div>
+          </div>
+
+          <!-- Sizes Section -->
+          <div class="info-section" id="sizesSection">
+            <button class="section-toggle" data-target="sizesList">
+              <span class="section-label">Sizes</span>
+              <span class="section-count" id="sizesCount">0</span>
+              <svg class="chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </button>
+            <div class="section-content" id="sizesList"></div>
+          </div>
+
+          <!-- Meta Info -->
+          <div class="meta-grid" id="metaGrid">
+            <div class="meta-item">
+              <span class="meta-label">SKU</span>
+              <span class="meta-value" id="skuValue">—</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Rating</span>
+              <span class="meta-value" id="ratingValue">—</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Reviews</span>
+              <span class="meta-value" id="reviewsValue">—</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Stock</span>
+              <span class="meta-value" id="stockValue">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI Analysis Card -->
+      <div class="analysis-card hidden" id="analysisCard">
+        <div class="analysis-header">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M8 1L10 6H15L11 9.5L12.5 15L8 11.5L3.5 15L5 9.5L1 6H6L8 1Z" fill="url(#starGrad)"/>
+            <defs>
+              <linearGradient id="starGrad" x1="1" y1="1" x2="15" y2="15">
+                <stop stop-color="#fbbf24"/>
+                <stop offset="1" stop-color="#f59e0b"/>
+              </linearGradient>
+            </defs>
+          </svg>
+          <span>AI Insights</span>
+        </div>
+        <div class="analysis-content" id="analysisContent"></div>
+      </div>
+
+      <!-- View Toggle -->
+      <div class="view-toggle">
+        <button class="toggle-btn active" data-view="formatted">Formatted</button>
+        <button class="toggle-btn" data-view="json">JSON</button>
+      </div>
+
+      <!-- JSON View -->
+      <div class="json-view hidden" id="jsonView">
+        <pre id="jsonContent"></pre>
+      </div>
+
+      <!-- Export Actions -->
+      <div class="export-actions">
+        <button class="export-btn" id="copyBtn">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <rect x="4" y="4" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M2 10V2.5C2 2.22386 2.22386 2 2.5 2H10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <span>Copy JSON</span>
+        </button>
+        <button class="export-btn" id="exportBtn">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M7 2V9M7 9L4 6M7 9L10 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 11H12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <span>Export</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Error State -->
+    <div class="error-state hidden" id="errorState">
+      <div class="error-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="10" stroke="#ef4444" stroke-width="2"/>
+          <path d="M12 8V12M12 16H12.01" stroke="#ef4444" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <p class="error-text" id="errorText">Something went wrong</p>
+      <button class="retry-btn" id="retryBtn">Try Again</button>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast hidden" id="toast">
+      <span class="toast-message" id="toastMessage"></span>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
