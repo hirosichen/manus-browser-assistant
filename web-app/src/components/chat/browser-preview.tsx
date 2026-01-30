@@ -25,6 +25,9 @@ export function BrowserPreview({
 }: BrowserPreviewProps) {
   const [activeTab, setActiveTab] = useState<Tab>('screenshot');
   const [zoomLevel, setZoomLevel] = useState(100);
+  const [showFullHtml, setShowFullHtml] = useState(false);
+
+  const HTML_PREVIEW_LIMIT = 10000;
 
   return (
     <div className="flex flex-col h-full bg-[var(--card)] rounded-xl border border-[var(--card-border)] overflow-hidden">
@@ -176,10 +179,21 @@ export function BrowserPreview({
         ) : (
           html ? (
             <pre className="p-4 text-xs font-mono text-[var(--muted)] whitespace-pre-wrap break-words">
-              {html.slice(0, 10000)}
-              {html.length > 10000 && (
-                <span className="text-[var(--warning)]">
-                  {'\n\n'}... truncated ({html.length - 10000} more characters)
+              {showFullHtml ? html : html.slice(0, HTML_PREVIEW_LIMIT)}
+              {!showFullHtml && html.length > HTML_PREVIEW_LIMIT && (
+                <span
+                  className="text-[var(--warning)] cursor-pointer hover:underline"
+                  onClick={() => setShowFullHtml(true)}
+                >
+                  {'\n\n'}... truncated ({(html.length - HTML_PREVIEW_LIMIT).toLocaleString()} more characters) - Click to show all
+                </span>
+              )}
+              {showFullHtml && html.length > HTML_PREVIEW_LIMIT && (
+                <span
+                  className="text-[var(--accent)] cursor-pointer hover:underline"
+                  onClick={() => setShowFullHtml(false)}
+                >
+                  {'\n\n'}[Collapse]
                 </span>
               )}
             </pre>
