@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useDeferredValue, useMemo } from 'react';
 import { cn, truncateUrl } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -28,6 +28,18 @@ export function BrowserPreview({
   const [showFullHtml, setShowFullHtml] = useState(false);
 
   const HTML_PREVIEW_LIMIT = 10000;
+
+  // Use deferred value to prevent blocking UI when showing full HTML
+  const deferredShowFullHtml = useDeferredValue(showFullHtml);
+
+  // Memoize the HTML content to prevent re-computation
+  const displayedHtml = useMemo(() => {
+    if (!html) return '';
+    if (deferredShowFullHtml) return html;
+    return html.slice(0, HTML_PREVIEW_LIMIT);
+  }, [html, deferredShowFullHtml]);
+
+  const isLoadingFullHtml = showFullHtml !== deferredShowFullHtml;
 
   return (
     <div className="flex flex-col h-full bg-[var(--card)] rounded-xl border border-[var(--card-border)] overflow-hidden">
@@ -178,25 +190,39 @@ export function BrowserPreview({
           )
         ) : (
           html ? (
-            <pre className="p-4 text-xs font-mono text-[var(--muted)] whitespace-pre-wrap break-words">
-              {showFullHtml ? html : html.slice(0, HTML_PREVIEW_LIMIT)}
-              {!showFullHtml && html.length > HTML_PREVIEW_LIMIT && (
-                <span
-                  className="text-[var(--warning)] cursor-pointer hover:underline"
-                  onClick={() => setShowFullHtml(true)}
-                >
-                  {'\n\n'}... truncated ({(html.length - HTML_PREVIEW_LIMIT).toLocaleString()} more characters) - Click to show all
-                </span>
+            <div className="relative">
+              {isLoadingFullHtml && (
+                <div className="absolute top-2 right-2 flex items-center gap-2 px-2 py-1 bg-[var(--card)] rounded text-xs text-[var(--muted)]">
+                  <div className="w-3 h-3 border border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+                  Loading...
+                </div>
               )}
-              {showFullHtml && html.length > HTML_PREVIEW_LIMIT && (
-                <span
-                  className="text-[var(--accent)] cursor-pointer hover:underline"
-                  onClick={() => setShowFullHtml(false)}
-                >
-                  {'\n\n'}[Collapse]
-                </span>
-              )}
-            </pre>
+              <pre
+                className="p-4 text-xs font-mono text-[var(--muted)] whitespace-pre-wrap break-words"
+                style={{
+                  contentVisibility: 'auto',
+                  containIntrinsicSize: '0 500px',
+                }}
+              >
+                {displayedHtml}
+                {!showFullHtml && html.length > HTML_PREVIEW_LIMIT && (
+                  <span
+                    className="text-[var(--warning)] cursor-pointer hover:underline"
+                    onClick={() => setShowFullHtml(true)}
+                  >
+                    {'\n\n'}... truncated ({(html.length - HTML_PREVIEW_LIMIT).toLocaleString()} more characters) - Click to show all
+                  </span>
+                )}
+                {deferredShowFullHtml && html.length > HTML_PREVIEW_LIMIT && (
+                  <span
+                    className="text-[var(--accent)] cursor-pointer hover:underline"
+                    onClick={() => setShowFullHtml(false)}
+                  >
+                    {'\n\n'}[Collapse]
+                  </span>
+                )}
+              </pre>
+            </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center p-8">
               <div className="w-16 h-16 rounded-2xl bg-[var(--card-border)] flex items-center justify-center mb-4">
