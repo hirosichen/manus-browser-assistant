@@ -1,11 +1,6 @@
 // Background service worker for Manus Browser Assistant
 // Handles tool execution for AI-powered browser automation
 
-// API key should be configured via extension options or environment
-// For security, do not hardcode API keys
-const ANTHROPIC_API_KEY = "";
-const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-
 // Store the current active tab for operations
 let currentTargetTabId = null;
 
@@ -388,74 +383,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true; // Keep message channel open for async response
   }
-
-  // Legacy: Handle product analysis from popup
-  if (request.action === 'analyzeProduct') {
-    analyzeProduct(request.productData)
-      .then(response => sendResponse({ success: true, analysis: response }))
-      .catch(error => sendResponse({ success: false, error: error.message }));
-    return true;
-  }
 });
-
-// Legacy: Product analysis function
-async function analyzeProduct(productData) {
-  const prompt = buildAnalysisPrompt(productData);
-
-  const response = await fetch(ANTHROPIC_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      messages: [
-        {
-          role: 'user',
-          content: prompt
-        }
-      ]
-    })
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error?.message || `API request failed: ${response.status}`);
-  }
-
-  const data = await response.json();
-  return data.content[0].text;
-}
-
-function buildAnalysisPrompt(productData) {
-  return `Analyze this product from Dick's Sporting Goods and provide insights:
-
-Product Information:
-- Title: ${productData.title || 'N/A'}
-- Current Price: ${productData.price || 'N/A'}
-- Original Price: ${productData.originalPrice || 'N/A'}
-- Colors Available: ${productData.colors?.map(c => c.name).join(', ') || 'N/A'}
-- Sizes: ${productData.sizes?.map(s => `${s.size}${s.available ? '' : ' (Out of Stock)'}`).join(', ') || 'N/A'}
-- Rating: ${productData.rating || 'N/A'}
-- Review Count: ${productData.reviewCount || 'N/A'}
-- Availability: ${productData.availability || 'N/A'}
-
-Description:
-${productData.description || 'N/A'}
-
-Please provide:
-1. **Product Summary** - A brief overview of the product
-2. **Value Assessment** - Is this a good deal? Consider the price and any discounts
-3. **Size Recommendation** - Any tips for sizing based on available sizes
-4. **Similar Alternatives** - What other products might be worth considering
-5. **Key Features** - Highlight the main selling points
-
-Keep the response concise and helpful for a shopper.`;
-}
 
 // Track tab updates to notify the web app
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
