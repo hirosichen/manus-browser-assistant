@@ -109,11 +109,27 @@ async function handleNavigate({ url }) {
     // Take a screenshot after navigation
     const screenshot = await captureScreenshot(tab.id);
 
+    // Also extract HTML content
+    let html = null;
+    try {
+      const result = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => document.documentElement.outerHTML,
+      });
+      html = result[0]?.result || null;
+    } catch (e) {
+      console.error('[Background] HTML extraction error:', e);
+    }
+
+    // Get updated tab info
+    const updatedTab = await chrome.tabs.get(tab.id);
+
     return {
       success: true,
       url: targetUrl,
-      title: tab.title,
+      title: updatedTab.title,
       screenshot,
+      html,
     };
   } catch (error) {
     return { success: false, error: error.message };
