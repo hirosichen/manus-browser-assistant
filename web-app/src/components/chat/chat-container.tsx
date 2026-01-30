@@ -15,37 +15,67 @@ export function ChatContainer() {
     api: '/api/chat',
   }), []);
 
-  const { messages, sendMessage, status, addToolResult, error } = useChat({
+  const { messages, sendMessage, status, error, addToolOutput } = useChat({
     transport,
-    onToolCall: async ({ toolCall }) => {
-      // Execute tool via extension
-      const result = await extension.executeTool(
-        toolCall.toolName,
-        toolCall.input as Record<string, unknown>
-      );
+    // Automatically continue when all tool results are available
+    sendAutomaticallyWhen: ({ messages }) => {
+      const lastMessage = messages[messages.length - 1];
+      console.log('[sendAutomaticallyWhen] Last message:', lastMessage);
 
-      // Add the tool result back to the chat
-      addToolResult({
-        toolCallId: toolCall.toolCallId,
-        tool: toolCall.toolName,
-        output: result,
-      });
+      if (!lastMessage || lastMessage.role !== 'assistant') {
+        console.log('[sendAutomaticallyWhen] Not assistant message, returning false');
+        return false;
+      }
+
+      // Check if all tool calls have results
+      const parts = lastMessage.parts || [];
+
+      // Tool parts have type like "tool-navigate", "tool-click", etc.
+      const toolParts = parts.filter((p: { type: string }) => p.type.startsWith('tool-'));
+      console.log('[sendAutomaticallyWhen] Tool parts:', toolParts);
+
+      if (toolParts.length === 0) {
+        return false;
+      }
+
+      // Check if all tool calls have output available
+      const hasAllResults = toolParts.every((tc: { state?: string; output?: unknown }) =>
+        tc.state === 'output-available' || tc.output !== undefined
+      );
+      console.log('[sendAutomaticallyWhen] Has all results:', hasAllResults);
+
+      return hasAllResults;
+    },
+    onToolCall: async ({ toolCall }) => {
+      console.log('[ChatContainer] Executing tool:', toolCall.toolName, toolCall.input);
+
+      try {
+        // Execute tool via extension
+        const result = await extension.executeTool(
+          toolCall.toolName,
+          toolCall.input as Record<string, unknown>
+        );
+
+        console.log('[ChatContainer] Tool result:', result);
+
+        // Use addToolOutput to add the result (don't await to avoid deadlock)
+        addToolOutput({
+          tool: toolCall.toolName,
+          toolCallId: toolCall.toolCallId,
+          output: result || { success: false, error: 'No result from tool execution' },
+        });
+      } catch (err) {
+        console.error('[ChatContainer] Tool execution error:', err);
+        addToolOutput({
+          tool: toolCall.toolName,
+          toolCallId: toolCall.toolCallId,
+          output: { success: false, error: err instanceof Error ? err.message : 'Tool execution failed' },
+        });
+      }
     },
   });
 
   const isLoading = status === 'streaming' || status === 'submitted';
-
-  // Handle manual screenshot request
-  const handleScreenshot = useCallback(async () => {
-    const result = await extension.takeScreenshot();
-    if (result.success && result.screenshot) {
-      // For now, just send a text message about the screenshot
-      // File attachments require different handling in SDK v6
-      sendMessage({
-        text: `I took a screenshot of the current page. The screenshot data is: ${result.screenshot.substring(0, 100)}...`,
-      });
-    }
-  }, [extension, sendMessage]);
 
   // Handle manual HTML extraction
   const handleExtract = useCallback(async () => {
@@ -105,7 +135,6 @@ export function ChatContainer() {
         {/* Input */}
         <ChatInput
           onSend={handleSend}
-          onScreenshot={handleScreenshot}
           onExtract={handleExtract}
           isLoading={isLoading}
           extensionConnected={extension.connected}
@@ -115,12 +144,15 @@ export function ChatContainer() {
       {/* Right panel - Browser Preview */}
       <div className="flex-1 p-4">
         <BrowserPreview
-          screenshot={extension.screenshot}
           html={extension.html}
           currentUrl={extension.currentUrl}
           currentTitle={extension.currentTitle}
           isExecuting={extension.isExecuting}
           connected={extension.connected}
+          livePreviewEnabled={extension.livePreviewEnabled}
+          liveScreenshot={extension.liveScreenshot}
+          onStartLivePreview={extension.startLivePreview}
+          onStopLivePreview={extension.stopLivePreview}
         />
       </div>
     </div>

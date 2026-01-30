@@ -1,5 +1,5 @@
 import { anthropic } from '@ai-sdk/anthropic';
-import { streamText, tool, convertToModelMessages } from 'ai';
+import { streamText, tool, convertToModelMessages, stepCountIs } from 'ai';
 import { z } from 'zod';
 
 export const maxDuration = 60;
@@ -12,29 +12,27 @@ export async function POST(req: Request) {
 
   const result = streamText({
     model: anthropic('claude-sonnet-4-20250514'),
+    // Allow up to 10 consecutive tool calls before stopping
+    stopWhen: stepCountIs(10),
     system: `You are Manus, an AI browser assistant that can help users navigate and interact with web pages.
 
 You have access to browser control tools that allow you to:
 - Navigate to URLs
-- Take screenshots of the current page
 - Click on elements
 - Type text into inputs
 - Scroll the page
 - Extract content from pages
 - Wait for pages to load
 
+IMPORTANT: A live preview is continuously streaming the browser state to the user interface. You do NOT need to take screenshots after each action - the user can already see the current page state in real-time through the live preview.
+
 When a user asks you to do something on the web:
 1. Think about what steps are needed
 2. Use the appropriate tools to accomplish the task
-3. After each action, analyze the screenshot to understand the current state
+3. The live preview will automatically show the result of your actions
 4. Continue until the task is complete
 
 Always explain what you're doing and why. Be helpful and efficient.
-
-When you receive a screenshot, analyze it carefully to understand:
-- What page you're on
-- What elements are visible
-- What actions might be needed next
 
 If a tool execution fails, explain the error and try an alternative approach.`,
     messages: modelMessages,
@@ -44,10 +42,6 @@ If a tool execution fails, explain the error and try an alternative approach.`,
         inputSchema: z.object({
           url: z.string().describe('The URL to navigate to'),
         }),
-      }),
-      screenshot: tool({
-        description: 'Take a screenshot of the current browser tab',
-        inputSchema: z.object({}),
       }),
       click: tool({
         description: 'Click on an element on the page',

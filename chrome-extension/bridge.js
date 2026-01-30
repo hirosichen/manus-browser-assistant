@@ -61,6 +61,26 @@
         type: 'PAGE_UPDATE',
         payload: request.payload,
       }, '*');
+    } else if (request.type === 'LIVE_FRAME') {
+      // Forward live capture frames to the web app
+      window.postMessage({
+        type: 'LIVE_FRAME',
+        payload: request.payload,
+      }, '*');
+    } else if (request.type === 'CAPTURE_STARTED') {
+      // Forward capture started notification to web app
+      console.log('[Manus Bridge] Capture started');
+      window.postMessage({
+        type: 'CAPTURE_STARTED',
+        payload: request.payload,
+      }, '*');
+    } else if (request.type === 'CAPTURE_STOPPED') {
+      // Forward capture stopped notification to web app
+      console.log('[Manus Bridge] Capture stopped');
+      window.postMessage({
+        type: 'CAPTURE_STOPPED',
+        payload: request.payload,
+      }, '*');
     }
     return true;
   });

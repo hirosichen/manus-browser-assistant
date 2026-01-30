@@ -1,10 +1,17 @@
 // Background service worker for Manus Browser Assistant
 // Handles tool execution for AI-powered browser automation
+// Uses Chrome Debugger API for live tab capture
 
 // Store the current active tab for operations
 let currentTargetTabId = null;
 // Store the web app tab to switch back after operations
 let webAppTabId = null;
+// Track if debugger is attached
+let debuggerAttached = false;
+// Track capture interval
+let captureIntervalId = null;
+// Capture rate in milliseconds
+const CAPTURE_RATE = 400;
 
 // Get the active tab that's not the localhost web app
 async function getTargetTab() {
@@ -69,6 +76,10 @@ async function executeTool(toolName, args) {
       return await handleExtract(args);
     case 'wait':
       return await handleWait(args);
+    case 'startCapture':
+      return await handleStartCapture();
+    case 'stopCapture':
+      return await handleStopCapture();
     default:
       return { success: false, error: `Unknown tool: ${toolName}` };
   }
@@ -106,30 +117,32 @@ async function handleNavigate({ url }) {
     // Wait for page to load
     await waitForTabLoad(tab.id);
 
-    // Take a screenshot after navigation
-    const screenshot = await captureScreenshot(tab.id);
-
-    // Also extract HTML content
-    let html = null;
-    try {
-      const result = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: () => document.documentElement.outerHTML,
-      });
-      html = result[0]?.result || null;
-    } catch (e) {
-      console.error('[Background] HTML extraction error:', e);
-    }
-
     // Get updated tab info
     const updatedTab = await chrome.tabs.get(tab.id);
+
+    // Note: We don't extract full HTML here to avoid token limit issues
+    // The live preview shows the page visually, and extract tool can be used if needed
+
+    // Auto-start live capture after navigation if not already running
+    if (!debuggerAttached && !captureIntervalId) {
+      console.log('[Background] Auto-starting live capture after navigation');
+      handleStartCapture().then(result => {
+        if (result.success) {
+          // Notify web app that live capture has started
+          notifyWebApp({
+            type: 'CAPTURE_STARTED',
+            payload: { tabId: tab.id, url: targetUrl },
+          });
+        }
+      }).catch(e => {
+        console.error('[Background] Auto-start capture failed:', e);
+      });
+    }
 
     return {
       success: true,
       url: targetUrl,
       title: updatedTab.title,
-      screenshot,
-      html,
     };
   } catch (error) {
     return { success: false, error: error.message };
@@ -189,8 +202,8 @@ async function handleClick({ selector }) {
     // Wait a moment for any reactions
     await new Promise(resolve => setTimeout(resolve, 500));
 
-    // Take screenshot after click
-    const screenshot = await captureScreenshot(tab.id);
+    // Skip screenshot if live capture is running (avoids tab switching)
+    const screenshot = debuggerAttached ? null : await captureScreenshot(tab.id);
 
     return {
       success: true,
@@ -252,8 +265,8 @@ async function handleType({ selector, text }) {
     // Wait a moment
     await new Promise(resolve => setTimeout(resolve, 300));
 
-    // Take screenshot after typing
-    const screenshot = await captureScreenshot(tab.id);
+    // Skip screenshot if live capture is running (avoids tab switching)
+    const screenshot = debuggerAttached ? null : await captureScreenshot(tab.id);
 
     return {
       success: true,
@@ -289,8 +302,8 @@ async function handleScroll({ direction, amount }) {
     // Wait for scroll to complete
     await new Promise(resolve => setTimeout(resolve, 500));
 
-    // Take screenshot after scroll
-    const screenshot = await captureScreenshot(tab.id);
+    // Skip screenshot if live capture is running (avoids tab switching)
+    const screenshot = debuggerAttached ? null : await captureScreenshot(tab.id);
 
     return {
       success: true,
@@ -336,10 +349,20 @@ async function handleExtract({ selector, type = 'text' }) {
       return extractResult || { success: false, error: 'Extract failed' };
     }
 
+    // Limit content size to avoid token limit issues (max ~50KB)
+    const MAX_CONTENT_SIZE = 50000;
+    let content = extractResult.data;
+    let truncated = false;
+    if (content && content.length > MAX_CONTENT_SIZE) {
+      content = content.substring(0, MAX_CONTENT_SIZE);
+      truncated = true;
+    }
+
     return {
       success: true,
-      data: extractResult.data,
-      html: type === 'html' ? extractResult.data : null,
+      data: content,
+      truncated,
+      originalLength: extractResult.data?.length || 0,
       url: tab.url,
       title: tab.title,
     };
@@ -354,10 +377,10 @@ async function handleWait({ seconds }) {
     const safeSeconds = seconds ?? 1;
     await new Promise(resolve => setTimeout(resolve, safeSeconds * 1000));
 
-    // Take screenshot after wait
+    // Skip screenshot if live capture is running (avoids tab switching)
     const tab = await getTargetTab();
     let screenshot = null;
-    if (tab) {
+    if (tab && !debuggerAttached) {
       screenshot = await captureScreenshot(tab.id);
     }
 
@@ -371,7 +394,145 @@ async function handleWait({ seconds }) {
   }
 }
 
-// Helper: Capture screenshot of a tab
+// Start live capture using Chrome Debugger API
+async function handleStartCapture() {
+  try {
+    // Stop any existing capture first
+    if (debuggerAttached || captureIntervalId) {
+      await handleStopCapture();
+    }
+
+    // First, ensure we have the web app tab
+    const tabs = await chrome.tabs.query({ url: 'http://localhost:3000/*' });
+    if (tabs.length === 0) {
+      return { success: false, error: 'Web app tab not found' };
+    }
+    webAppTabId = tabs[0].id;
+
+    // Get the target tab to capture
+    const targetTab = await getTargetTab();
+    if (!targetTab) {
+      return { success: false, error: 'No target tab found. Navigate to a page first.' };
+    }
+
+    console.log('[Background] Starting debugger capture for tab:', targetTab.id, targetTab.url);
+
+    // Attach debugger to target tab
+    try {
+      await chrome.debugger.attach({ tabId: targetTab.id }, '1.3');
+      debuggerAttached = true;
+      currentTargetTabId = targetTab.id;
+      console.log('[Background] Debugger attached successfully');
+    } catch (attachError) {
+      console.error('[Background] Debugger attach error:', attachError);
+      // Check if DevTools is open
+      if (attachError.message && attachError.message.includes('Another debugger')) {
+        return {
+          success: false,
+          error: 'Cannot attach debugger: DevTools may be open on the target tab. Please close DevTools and try again.',
+        };
+      }
+      return { success: false, error: attachError.message };
+    }
+
+    // Start periodic screenshot capture
+    captureIntervalId = setInterval(async () => {
+      if (!debuggerAttached || !currentTargetTabId) {
+        console.log('[Background] Capture stopped: debugger not attached');
+        handleStopCapture();
+        return;
+      }
+
+      try {
+        const result = await chrome.debugger.sendCommand(
+          { tabId: currentTargetTabId },
+          'Page.captureScreenshot',
+          { format: 'jpeg', quality: 70 }
+        );
+
+        // Send screenshot to web app
+        notifyWebApp({
+          type: 'LIVE_FRAME',
+          payload: {
+            screenshot: 'data:image/jpeg;base64,' + result.data,
+            timestamp: Date.now(),
+          },
+        });
+      } catch (captureError) {
+        console.error('[Background] Capture error:', captureError);
+        // If capture fails, stop the interval
+        handleStopCapture();
+        notifyWebApp({
+          type: 'CAPTURE_STOPPED',
+          payload: { reason: captureError.message },
+        });
+      }
+    }, CAPTURE_RATE);
+
+    return {
+      success: true,
+      tabId: targetTab.id,
+      url: targetTab.url,
+      title: targetTab.title,
+      mode: 'debugger',
+    };
+  } catch (error) {
+    console.error('[Background] Start capture error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Stop live capture
+async function handleStopCapture() {
+  try {
+    // Stop capture interval
+    if (captureIntervalId) {
+      clearInterval(captureIntervalId);
+      captureIntervalId = null;
+      console.log('[Background] Capture interval cleared');
+    }
+
+    // Detach debugger
+    if (debuggerAttached && currentTargetTabId) {
+      try {
+        await chrome.debugger.detach({ tabId: currentTargetTabId });
+        console.log('[Background] Debugger detached');
+      } catch (e) {
+        // Ignore errors if already detached
+        console.log('[Background] Debugger detach error (may already be detached):', e.message);
+      }
+      debuggerAttached = false;
+    }
+
+    console.log('[Background] Live capture stopped');
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Listen for debugger detach events (e.g., user closes tab or DevTools opens)
+chrome.debugger.onDetach.addListener((source, reason) => {
+  if (source.tabId === currentTargetTabId) {
+    console.log('[Background] Debugger detached externally:', reason);
+    debuggerAttached = false;
+
+    // Stop capture interval
+    if (captureIntervalId) {
+      clearInterval(captureIntervalId);
+      captureIntervalId = null;
+    }
+
+    // Notify web app that capture has stopped
+    notifyWebApp({
+      type: 'CAPTURE_STOPPED',
+      payload: { reason },
+    });
+  }
+});
+
+// Helper: Capture screenshot of a tab (for non-live operations)
 async function captureScreenshot(tabId) {
   try {
     // Make sure the tab is focused
@@ -462,6 +623,15 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }
 });
 
+// Handle tab removal - clean up if target tab is closed
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (tabId === currentTargetTabId) {
+    console.log('[Background] Target tab closed, stopping capture');
+    handleStopCapture();
+    currentTargetTabId = null;
+  }
+});
+
 // Helper to notify web app via bridge
 async function notifyWebApp(message) {
   try {
@@ -476,4 +646,4 @@ async function notifyWebApp(message) {
   }
 }
 
-console.log('[Manus Background] Service worker loaded');
+console.log('[Manus Background] Service worker loaded (Debugger API mode)');
