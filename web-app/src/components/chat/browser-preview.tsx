@@ -190,18 +190,20 @@ export function BrowserPreview({
           )
         ) : (
           html ? (
-            <div className="relative">
+            <div className="relative h-full overflow-hidden">
               {isLoadingFullHtml && (
-                <div className="absolute top-2 right-2 flex items-center gap-2 px-2 py-1 bg-[var(--card)] rounded text-xs text-[var(--muted)]">
+                <div className="absolute top-2 right-2 z-10 flex items-center gap-2 px-2 py-1 bg-[var(--card)] rounded text-xs text-[var(--muted)]">
                   <div className="w-3 h-3 border border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
                   Loading...
                 </div>
               )}
               <pre
-                className="p-4 text-xs font-mono text-[var(--muted)] whitespace-pre-wrap break-words"
+                className="p-4 text-xs font-mono text-[var(--muted)] whitespace-pre-wrap break-all h-full overflow-auto"
                 style={{
                   contentVisibility: 'auto',
                   containIntrinsicSize: '0 500px',
+                  maxWidth: '100%',
+                  wordBreak: 'break-all',
                 }}
               >
                 {displayedHtml}
