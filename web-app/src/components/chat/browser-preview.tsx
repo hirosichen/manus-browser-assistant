@@ -12,8 +12,8 @@ interface BrowserPreviewProps {
   connected?: boolean;
   livePreviewEnabled?: boolean;
   liveScreenshot?: string | null;
-  onStartLivePreview?: () => Promise<void>;
-  onStopLivePreview?: () => Promise<void>;
+  onStartLivePreview?: () => Promise<{ success: boolean; error?: string }>;
+  onStopLivePreview?: () => Promise<{ success: boolean; error?: string }>;
 }
 
 type Tab = 'live' | 'html';
@@ -135,6 +135,7 @@ export function BrowserPreview({
             <button
               onClick={handleStartLive}
               disabled={isStartingLive}
+              aria-label={isStartingLive ? 'Starting live preview' : 'Start live preview'}
               className={cn(
                 'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
                 activeTab === 'live'
@@ -144,9 +145,9 @@ export function BrowserPreview({
               )}
             >
               {isStartingLive ? (
-                <div className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" />
+                <div className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" aria-hidden="true" />
               ) : (
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
               )}
@@ -163,7 +164,7 @@ export function BrowserPreview({
               : 'text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--card-border)]'
           )}
         >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
           </svg>
           HTML
@@ -179,8 +180,9 @@ export function BrowserPreview({
               size="icon"
               className="h-7 w-7"
               onClick={() => setZoomLevel(Math.max(25, zoomLevel - 25))}
+              aria-label="Zoom out"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
               </svg>
             </Button>
@@ -190,8 +192,9 @@ export function BrowserPreview({
               size="icon"
               className="h-7 w-7"
               onClick={() => setZoomLevel(Math.min(200, zoomLevel + 25))}
+              aria-label="Zoom in"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
             </Button>
@@ -220,12 +223,15 @@ export function BrowserPreview({
               </div>
               <img
                 src={liveScreenshot}
-                alt="Live preview"
+                alt="Live preview of current browser tab"
+                width={1920}
+                height={1080}
                 className="rounded-lg shadow-lg border border-[var(--card-border)]"
                 style={{
                   maxWidth: '100%',
                   maxHeight: '100%',
                   width: `${zoomLevel}%`,
+                  height: 'auto',
                   objectFit: 'contain',
                 }}
               />
@@ -245,7 +251,7 @@ export function BrowserPreview({
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center p-8">
               <div className="w-16 h-16 rounded-2xl bg-[var(--card-border)] flex items-center justify-center mb-4">
-                <svg className="w-8 h-8 text-[var(--muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-8 h-8 text-[var(--muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
               </div>
@@ -299,7 +305,7 @@ export function BrowserPreview({
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center p-8">
               <div className="w-16 h-16 rounded-2xl bg-[var(--card-border)] flex items-center justify-center mb-4">
-                <svg className="w-8 h-8 text-[var(--muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-8 h-8 text-[var(--muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                 </svg>
               </div>

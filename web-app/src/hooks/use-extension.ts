@@ -38,6 +38,7 @@ export function useExtension() {
 
   const pendingCallbacks = useRef<Map<string, MessageHandler>>(new Map());
   const messageIdCounter = useRef(0);
+  const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Handle messages from extension
   const handleMessage = useCallback((event: MessageEvent) => {
@@ -85,7 +86,6 @@ export function useExtension() {
       }));
     } else if (type === 'CAPTURE_STARTED') {
       // Live capture auto-started (e.g., after navigation)
-      console.log('[useExtension] Capture started:', payload);
       setState(prev => ({
         ...prev,
         livePreviewEnabled: true,
@@ -93,7 +93,6 @@ export function useExtension() {
       }));
     } else if (type === 'CAPTURE_STOPPED') {
       // Live capture stopped (debugger detached, tab closed, etc.)
-      console.log('[useExtension] Capture stopped:', payload?.reason);
       setState(prev => ({
         ...prev,
         livePreviewEnabled: false,
@@ -111,12 +110,20 @@ export function useExtension() {
       window.postMessage({ type: 'EXTENSION_PING' }, '*');
     };
 
+    // Clear any existing interval before creating new one
+    if (pingIntervalRef.current) {
+      clearInterval(pingIntervalRef.current);
+    }
+
     pingExtension();
-    const interval = setInterval(pingExtension, 5000); // Check every 5 seconds
+    pingIntervalRef.current = setInterval(pingExtension, 5000); // Check every 5 seconds
 
     return () => {
       window.removeEventListener('message', handleMessage);
-      clearInterval(interval);
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current);
+        pingIntervalRef.current = null;
+      }
     };
   }, [handleMessage]);
 
@@ -211,7 +218,6 @@ export function useExtension() {
 
       return { success: true };
     } catch (error) {
-      console.error('[useExtension] Start live preview error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to start live preview';
       setState(prev => ({
         ...prev,
@@ -230,10 +236,8 @@ export function useExtension() {
   useEffect(() => {
     if (state.connected && !state.livePreviewEnabled && !state.isExecuting && !hasAutoStarted.current) {
       hasAutoStarted.current = true;
-      startLivePreview().catch(() => {
-        // Ignore errors - extension will auto-start after first navigation
-        console.log('[useExtension] Initial auto-start failed, will start after navigation');
-      });
+      // Ignore errors - extension will auto-start after first navigation
+      startLivePreview().catch(() => {});
     }
     // Reset the flag when disconnected so it can auto-start again on reconnect
     if (!state.connected) {
@@ -254,7 +258,6 @@ export function useExtension() {
 
       return { success: true };
     } catch (error) {
-      console.error('[useExtension] Stop live preview error:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Failed to stop live preview' };
     }
   }, [executeTool]);

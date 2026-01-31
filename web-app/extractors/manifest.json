@@ -1,0 +1,69 @@
+{
+  "extractors": [
+    {
+      "name": "books-to-scrape",
+      "urlPattern": "books.toscrape.com",
+      "fields": [
+        "title",
+        "price"
+      ],
+      "createdAt": "2026-01-31"
+    },
+    {
+      "name": "amazon-product-search",
+      "urlPattern": "amazon.com",
+      "fields": [
+        "title",
+        "price"
+      ],
+      "createdAt": "2026-01-31"
+    },
+    {
+      "name": "quotes-to-scrape",
+      "urlPattern": "quotes.toscrape.com",
+      "fields": [
+        "content",
+        "author"
+      ],
+      "createdAt": "2026-01-31"
+    },
+    {
+      "name": "dicks-sporting-goods-product",
+      "urlPattern": "dickssportinggoods.com",
+      "fields": [
+        "name",
+        "price",
+        "color",
+        "rating",
+        "brand",
+        "description"
+      ],
+      "createdAt": "2026-01-31"
+    },
+    {
+      "name": "vuori-clothing-product",
+      "urlPattern": "vuoriclothing.com",
+      "fields": [
+        "name",
+        "price",
+        "colors",
+        "sizes",
+        "important_info"
+      ],
+      "createdAt": "2026-01-31"
+    },
+    {
+      "name": "pchome-24h-rtx-5090-laptops",
+      "urlPattern": "24h.pchome.com.tw",
+      "fields": [
+        "name",
+        "price",
+        "processor",
+        "graphics",
+        "ram",
+        "storage"
+      ],
+      "createdAt": "2026-01-31"
+    }
+  ]
+}

@@ -7,9 +7,10 @@ import { MessageItem } from './message-item';
 interface MessageListProps {
   messages: UIMessage[];
   isLoading?: boolean;
+  onSuggestionClick?: (suggestion: string) => void;
 }
 
-export function MessageList({ messages, isLoading }: MessageListProps) {
+export function MessageList({ messages, isLoading, onSuggestionClick }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
@@ -40,7 +41,8 @@ export function MessageList({ messages, isLoading }: MessageListProps) {
           ].map((suggestion) => (
             <button
               key={suggestion}
-              className="px-3 py-1.5 text-xs rounded-full bg-[var(--card)] border border-[var(--card-border)] text-[var(--muted)] hover:text-[var(--foreground)] hover:border-[var(--accent)]/50 transition-colors"
+              onClick={() => onSuggestionClick?.(suggestion)}
+              className="px-3 py-1.5 text-xs rounded-full bg-[var(--card)] border border-[var(--card-border)] text-[var(--muted)] hover:text-[var(--foreground)] hover:border-[var(--accent)]/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
             >
               {suggestion}
             </button>

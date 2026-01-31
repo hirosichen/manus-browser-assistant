@@ -2,76 +2,128 @@
 
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState, useRef } from 'react';
 import { MessageList } from './message-list';
 import { ChatInput } from './chat-input';
 import { BrowserPreview } from './browser-preview';
+import { TokenUsageDisplay } from './token-usage';
 import { useExtension } from '@/hooks/use-extension';
+import type { TokenUsage } from '@/lib/token-cost';
+
+// Token optimization: Preprocess HTML and limit content size
+const MAX_CONTENT_CHARS = 6000; // ~1500 tokens - balance between speed and quality
+
+// Strip only truly useless HTML elements (conservative approach)
+const preprocessHtml = (html: string): string => {
+  // Only remove elements that NEVER contain useful product data
+  let cleaned = html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+    .replace(/<svg\b[^<]*(?:(?!<\/svg>)<[^<]*)*<\/svg>/gi, '')
+    .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, '')
+    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '') // Remove comments
+    // Remove data attributes and event handlers to reduce noise
+    .replace(/\s(data-[a-z-]+|on[a-z]+)="[^"]*"/gi, '')
+    .replace(/\s(class|id)="[^"]*"/gi, '') // Remove class/id attributes
+    .replace(/<[^>]+>/g, ' ') // Strip all HTML tags, keep text
+    .replace(/\s+/g, ' ') // Collapse whitespace
+    .trim();
+  return cleaned;
+};
+
+const truncateToolResult = (result: unknown): unknown => {
+  if (typeof result === 'string') {
+    // Preprocess if it looks like HTML
+    let processed = result;
+    if (result.includes('<') && result.includes('>')) {
+      processed = preprocessHtml(result);
+    }
+    if (processed.length > MAX_CONTENT_CHARS) {
+      return processed.slice(0, MAX_CONTENT_CHARS) + `\n\n[... truncated ...]`;
+    }
+    return processed;
+  }
+  if (result && typeof result === 'object') {
+    const obj = result as Record<string, unknown>;
+    const truncated: Record<string, unknown> = { ...obj };
+    for (const key of ['data', 'content', 'html', 'text', 'result']) {
+      if (typeof truncated[key] === 'string') {
+        let val = truncated[key] as string;
+        // Preprocess HTML content
+        if (val.includes('<') && val.includes('>')) {
+          val = preprocessHtml(val);
+        }
+        if (val.length > MAX_CONTENT_CHARS) {
+          truncated[key] = val.slice(0, MAX_CONTENT_CHARS) + `\n\n[... truncated ...]`;
+        } else {
+          truncated[key] = val;
+        }
+      }
+    }
+    return truncated;
+  }
+  return result;
+};
 
 export function ChatContainer() {
   const extension = useExtension();
+  const [tokenUsage, setTokenUsage] = useState<TokenUsage | null>(null);
 
   const transport = useMemo(() => new DefaultChatTransport({
     api: '/api/chat',
   }), []);
 
+  // Memoized callback for auto-send logic to prevent unnecessary re-renders
+  const sendAutomaticallyWhen = useCallback(({ messages }: { messages: Array<{ role: string; parts?: Array<{ type: string; state?: string; output?: unknown }> }> }) => {
+    const lastMessage = messages[messages.length - 1];
+
+    if (!lastMessage || lastMessage.role !== 'assistant') {
+      return false;
+    }
+
+    const parts = lastMessage.parts || [];
+
+    // Tool parts have type like "tool-navigate", "tool-click", etc.
+    const toolParts = parts.filter((p) => p.type.startsWith('tool-'));
+
+    if (toolParts.length === 0) {
+      return false;
+    }
+
+    // Check if all tool calls have output available
+    const hasAllResults = toolParts.every((tc) => {
+      return tc.state === 'output-available' || tc.output !== undefined;
+    });
+
+    // Check if there are pending tool calls (state: "pending" or "running")
+    const hasPendingTools = toolParts.some((tc) => {
+      return tc.state === 'pending' || tc.state === 'running' || tc.state === 'call';
+    });
+
+    // Only auto-send if:
+    // 1. All current tool calls have results AND
+    // 2. The message ends with a tool result (not a final text response)
+    // This prevents infinite loops when AI has finished responding
+    const lastPart = parts[parts.length - 1];
+    const endsWithToolResult = lastPart && lastPart.type?.startsWith('tool-') && lastPart.state === 'output-available';
+
+    return hasAllResults && !!endsWithToolResult && !hasPendingTools;
+  }, []);
+
   const { messages, sendMessage, status, error, addToolOutput } = useChat({
     transport,
-    // Automatically continue when tool results are available and AI needs to continue
-    sendAutomaticallyWhen: ({ messages }) => {
-      const lastMessage = messages[messages.length - 1];
-
-      if (!lastMessage || lastMessage.role !== 'assistant') {
-        return false;
-      }
-
-      const parts = lastMessage.parts || [];
-
-      // Check if there's a final text response (state: "done") - means AI finished
-      const textParts = parts.filter((p: { type: string; state?: string }) =>
-        p.type === 'text' && p.state === 'done'
-      );
-
-      // Tool parts have type like "tool-navigate", "tool-click", etc.
-      const toolParts = parts.filter((p: { type: string }) => p.type.startsWith('tool-'));
-
-      if (toolParts.length === 0) {
-        return false;
-      }
-
-      // Check if all tool calls have output available
-      const hasAllResults = toolParts.every((tc: { state?: string; output?: unknown }) =>
-        tc.state === 'output-available' || tc.output !== undefined
-      );
-
-      // Check if there are pending tool calls (state: "pending" or "running")
-      const hasPendingTools = toolParts.some((tc: { state?: string }) =>
-        tc.state === 'pending' || tc.state === 'running' || tc.state === 'call'
-      );
-
-      // Only auto-send if:
-      // 1. All current tool calls have results AND
-      // 2. The message ends with a tool result (not a final text response)
-      // This prevents infinite loops when AI has finished responding
-      const lastPart = parts[parts.length - 1];
-      const endsWithToolResult = lastPart && lastPart.type?.startsWith('tool-') && lastPart.state === 'output-available';
-
-      const shouldSend = hasAllResults && endsWithToolResult && !hasPendingTools;
-      console.log('[sendAutomaticallyWhen] Should send:', shouldSend, { hasAllResults, endsWithToolResult, hasPendingTools });
-
-      return shouldSend;
-    },
+    sendAutomaticallyWhen,
     onToolCall: async ({ toolCall }) => {
-      console.log('[ChatContainer] Executing tool:', toolCall.toolName, toolCall.input);
-
       try {
         // Execute tool via extension
-        const result = await extension.executeTool(
+        const rawResult = await extension.executeTool(
           toolCall.toolName,
           toolCall.input as Record<string, unknown>
         );
 
-        console.log('[ChatContainer] Tool result:', result);
+        // Token optimization: Truncate large results (especially from extract tool)
+        const result = truncateToolResult(rawResult);
 
         // Use addToolOutput to add the result (don't await to avoid deadlock)
         addToolOutput({
@@ -80,12 +132,21 @@ export function ChatContainer() {
           output: result || { success: false, error: 'No result from tool execution' },
         });
       } catch (err) {
-        console.error('[ChatContainer] Tool execution error:', err);
+        if (process.env.NODE_ENV === 'development') {
+          console.error('[ChatContainer] Tool execution error:', err);
+        }
         addToolOutput({
           tool: toolCall.toolName,
           toolCallId: toolCall.toolCallId,
           output: { success: false, error: err instanceof Error ? err.message : 'Tool execution failed' },
         });
+      }
+    },
+    onFinish: ({ message }) => {
+      // Extract usage from message metadata
+      const metadata = message.metadata as { usage?: TokenUsage } | undefined;
+      if (metadata?.usage) {
+        setTokenUsage(metadata.usage);
       }
     },
   });
@@ -145,7 +206,10 @@ export function ChatContainer() {
         </div>
 
         {/* Messages */}
-        <MessageList messages={messages} isLoading={isLoading} />
+        <MessageList messages={messages} isLoading={isLoading} onSuggestionClick={handleSend} />
+
+        {/* Token Usage */}
+        <TokenUsageDisplay usage={tokenUsage} />
 
         {/* Input */}
         <ChatInput
