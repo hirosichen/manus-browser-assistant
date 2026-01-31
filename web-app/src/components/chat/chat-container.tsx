@@ -17,22 +17,23 @@ export function ChatContainer() {
 
   const { messages, sendMessage, status, error, addToolOutput } = useChat({
     transport,
-    // Automatically continue when all tool results are available
+    // Automatically continue when tool results are available and AI needs to continue
     sendAutomaticallyWhen: ({ messages }) => {
       const lastMessage = messages[messages.length - 1];
-      console.log('[sendAutomaticallyWhen] Last message:', lastMessage);
 
       if (!lastMessage || lastMessage.role !== 'assistant') {
-        console.log('[sendAutomaticallyWhen] Not assistant message, returning false');
         return false;
       }
 
-      // Check if all tool calls have results
       const parts = lastMessage.parts || [];
+
+      // Check if there's a final text response (state: "done") - means AI finished
+      const textParts = parts.filter((p: { type: string; state?: string }) =>
+        p.type === 'text' && p.state === 'done'
+      );
 
       // Tool parts have type like "tool-navigate", "tool-click", etc.
       const toolParts = parts.filter((p: { type: string }) => p.type.startsWith('tool-'));
-      console.log('[sendAutomaticallyWhen] Tool parts:', toolParts);
 
       if (toolParts.length === 0) {
         return false;
@@ -42,9 +43,23 @@ export function ChatContainer() {
       const hasAllResults = toolParts.every((tc: { state?: string; output?: unknown }) =>
         tc.state === 'output-available' || tc.output !== undefined
       );
-      console.log('[sendAutomaticallyWhen] Has all results:', hasAllResults);
 
-      return hasAllResults;
+      // Check if there are pending tool calls (state: "pending" or "running")
+      const hasPendingTools = toolParts.some((tc: { state?: string }) =>
+        tc.state === 'pending' || tc.state === 'running' || tc.state === 'call'
+      );
+
+      // Only auto-send if:
+      // 1. All current tool calls have results AND
+      // 2. The message ends with a tool result (not a final text response)
+      // This prevents infinite loops when AI has finished responding
+      const lastPart = parts[parts.length - 1];
+      const endsWithToolResult = lastPart && lastPart.type?.startsWith('tool-') && lastPart.state === 'output-available';
+
+      const shouldSend = hasAllResults && endsWithToolResult && !hasPendingTools;
+      console.log('[sendAutomaticallyWhen] Should send:', shouldSend, { hasAllResults, endsWithToolResult, hasPendingTools });
+
+      return shouldSend;
     },
     onToolCall: async ({ toolCall }) => {
       console.log('[ChatContainer] Executing tool:', toolCall.toolName, toolCall.input);
